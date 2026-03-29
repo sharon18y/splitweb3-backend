@@ -1,11 +1,9 @@
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
 const Sequelize = require('sequelize');
 const process = require('process');
-const basename = path.basename(__filename);
 const env = process.env.NODE_ENV || 'development';
+// Mengambil konfigurasi dari config.js
 const config = require(__dirname + '/../config/config.js')[env];
 const db = {};
 
@@ -16,21 +14,17 @@ if (config.use_env_variable) {
   sequelize = new Sequelize(config.database, config.username, config.password, config);
 }
 
-fs
-  .readdirSync(__dirname)
-  .filter(file => {
-    return (
-      file.indexOf('.') !== 0 &&
-      file !== basename &&
-      file.slice(-3) === '.js' &&
-      file.indexOf('.test.js') === -1
-    );
-  })
-  .forEach(file => {
-    const model = require(path.join(__dirname, file))(sequelize, Sequelize.DataTypes);
-    db[model.name] = model;
-  });
+// 👉 IMPORT MANUAL (Solusi agar Vercel tidak bingung mencari file)
+// Pastikan nama file di dalam require('./...') sesuai dengan nama file aslimu (case-sensitive)
+db.User = require('./user')(sequelize, Sequelize.DataTypes);
+db.Group = require('./group')(sequelize, Sequelize.DataTypes);
+db.GroupMember = require('./groupMember')(sequelize, Sequelize.DataTypes);
+db.Bill = require('./bill')(sequelize, Sequelize.DataTypes);
+db.BillSplit = require('./billSplit')(sequelize, Sequelize.DataTypes);
+db.Transaction = require('./transaction')(sequelize, Sequelize.DataTypes);
+db.Notification = require('./notification')(sequelize, Sequelize.DataTypes);
 
+// Menjalankan relasi (associations) antar tabel
 Object.keys(db).forEach(modelName => {
   if (db[modelName].associate) {
     db[modelName].associate(db);
