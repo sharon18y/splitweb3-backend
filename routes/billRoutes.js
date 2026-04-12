@@ -9,7 +9,7 @@ const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
 
-// Konfigurasi Kunci Rahasia Cloudinary
+// Konfigurasi Kunci Rahasia Cloudinary (Sudah dimasukkan!)
 cloudinary.config({ 
   cloud_name: 'dbhjbpvr1', 
   api_key: '793877826638842', 
@@ -20,9 +20,9 @@ cloudinary.config({
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
-    folder: 'splitweb3_uploads', 
-    allowedFormats: ['jpg', 'png', 'jpeg', 'webp'], 
-    transformation: [{ width: 1000, crop: "limit" }] 
+    folder: 'splitweb3_uploads', // Nama folder otomatis yang akan terbuat di Cloudinary
+    allowedFormats: ['jpg', 'png', 'jpeg', 'webp'], // PERBAIKAN: Huruf F kapital
+    transformation: [{ width: 1000, crop: "limit" }] // Otomatis kompres ukuran biar hemat kuota
   },
 });
 
@@ -31,7 +31,10 @@ const upload = multer({ storage: storage });
 // ==========================================
 // RUTE UTAMA TAGIHAN
 // ==========================================
+
+// Upload struk belanja (langsung jadi URL Cloudinary)
 router.post('/', authMiddleware, upload.single('struk_foto'), billController.createBill);
+
 router.get('/group/:groupId', authMiddleware, billController.getGroupBills);
 router.get('/:id', authMiddleware, billController.getBillDetails);
 router.put('/split/:splitId/pay', authMiddleware, billController.markAsPaid);
@@ -40,8 +43,12 @@ router.put('/split/:splitId/pay-onchain', authMiddleware, billController.payOnCh
 // ==========================================
 // FITUR APPROVAL BAYAR CASH (MAKER - CHECKER)
 // ==========================================
+
 router.post('/:splitId/request-confirm', authMiddleware, upload.single('bukti_transfer'), async (req, res) => {
   try {
+    // ALAT PELACAK: Untuk mengecek di Log Vercel apakah kode baru ini yang dieksekusi
+    console.log('🚀 --- RUTE CLOUDINARY DIEKSEKUSI --- 🚀');
+
     const { splitId } = req.params;
     const userId = req.user.id;
 
@@ -50,6 +57,7 @@ router.post('/:splitId/request-confirm', authMiddleware, upload.single('bukti_tr
 
     const bill = await db.Bill.findByPk(split.bill_id);
 
+    // SKENARIO 1: Admin langsung klik Lunas
     if (userId === bill.payer_id) {
       split.status = 'PAID';
       split.is_paid = true;
@@ -69,13 +77,15 @@ router.post('/:splitId/request-confirm', authMiddleware, upload.single('bukti_tr
       return res.json({ message: "Sebagai Pemberi Dana, kamu langsung melunasi tagihan ini!", split });
     }
 
+    // SKENARIO 2: Si Pengutang upload bukti transfer
     if (split.user_id === userId) {
       if (split.is_paid) return res.status(400).json({ message: "Tagihan ini sudah lunas!" });
       
       split.status = 'PENDING';
       
-      // 👉 MENGGUNAKAN URL CLOUDINARY
+      // 👉 PERUBAHAN SAKTI: req.file.path sekarang berisi URL Cloudinary lengkap!
       if (req.file) {
+          console.log('✅ File berhasil masuk ke Cloudinary:', req.file.path);
           split.bukti_transfer = req.file.path; 
       }
 
@@ -94,8 +104,11 @@ router.post('/:splitId/request-confirm', authMiddleware, upload.single('bukti_tr
 
       return res.json({ message: "Berhasil diajukan. Tunggu konfirmasi penerima ya!", split });
     }
+
     return res.status(403).json({ message: "Kamu tidak punya akses ke tagihan ini!" });
+
   } catch (error) {
+    console.error('❌ ERROR SAAT REQUEST CONFIRM:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -104,8 +117,10 @@ router.post('/:splitId/approve', authMiddleware, async (req, res) => {
   try {
     const { splitId } = req.params;
     const userId = req.user.id;
+
     const split = await db.BillSplit.findByPk(splitId);
     if (!split) return res.status(404).json({ message: "Tagihan tidak ditemukan" });
+
     const bill = await db.Bill.findByPk(split.bill_id);
     
     if (bill.payer_id !== userId) {
